@@ -1,163 +1,183 @@
-﻿#include <iostream>
+﻿ 
+#include <iostream>
 #include <fstream>
-#include <windows.h>
 #include <string>
+#include <set>
+#include <windows.h>
 using namespace std;
 
-struct Student {
-    string surname;
-    int grades[4];
+// Структура для хранения данных о студенте
+struct StudentInfo {
+    string name;
+    int exams[4];
 };
 
-// Функция определения результата
-int getResult(const Student& s) {
+// Функция расчёта типа стипендии или отчисления
+int calcScholarship(const StudentInfo& st) {
     bool has2 = false, has3 = false;
-    int sum = 0;
+    int total = 0;
 
-    for (int i = 0; i < 4; i++) {
-        if (s.grades[i] == 2) has2 = true;
-        if (s.grades[i] == 3) has3 = true;
-        sum += s.grades[i];
+    // Перебираем оценки и подсчитываем сумму
+    for (int i = 0; i < 4; ++i) {
+        if (st.exams[i] == 2) has2 = true;
+        if (st.exams[i] == 3) has3 = true;
+        total += st.exams[i];
     }
 
-    if (has2) return 0;       // отчислен
-    if (has3) return 1;       // без стипендии
-    if (sum == 20) return 3;  // повышенная
-    return 2;                 // обычная
+    // Возвращаем код результата
+    if (has2) return 0;   // Отчислен
+    if (has3) return 1;   // Без стипендии
+    if (total == 20) return 3; // Повышенная стипендия
+    return 2;             // Обычная стипендия
 }
 
 int main() {
     setlocale(LC_ALL, "rus");
-    cout << "Сервер запущен и ожидает запросы от клиентов..." << endl;
+    cout << "[SERVER] Стартует текстовый сервер..." << endl;
 
-    const string reqFile = "C:/Users/s0177102/source/repos/file/REQUEST.txt";
-    string lastNameProcessed = "";
+    // Файл, куда клиенты записывают фамилии студентов
+    const string reqFile = "C:/Users/s0177102/source/repos/file/queue.txt";
 
+    // Множество обработанных фамилий (чтобы не повторять обработку)
+    set<string> processed;
+
+    // Бесконечный цикл — сервер постоянно проверяет наличие новых записей
     while (true) {
-        Sleep(500);
+        Sleep(1000); // Пауза между проверками (1 секунда)
+
         ifstream fin(reqFile);
-        if (!fin.is_open()) continue;
+        if (!fin.is_open()) continue; // Если файл не найден — продолжаем ждать
 
-        string temp, latest;
-        while (fin >> temp) latest = temp;
-        fin.close();
+        string name;
+        while (fin >> name) { // Считываем фамилии из файла по очереди
+            if (processed.count(name)) continue; // Пропускаем, если уже обрабатывали
+            processed.insert(name); // Добавляем фамилию в список обработанных
 
-        if (latest.empty() || latest == lastNameProcessed)
-            continue;
+            // Формируем путь к файлу с оценками студента
+            string filePath = "C:/Users/s0177102/source/repos/file/" + name + ".txt";
+            ifstream dataIn(filePath);
+            if (!dataIn.is_open()) continue; // Если файла нет — пропускаем
 
-        lastNameProcessed = latest;
+            // Считываем оценки студента
+            StudentInfo st;
+            st.name = name;
+            for (int i = 0; i < 4; ++i) dataIn >> st.exams[i];
+            dataIn.close();
 
-        string studentFile = "C:/Users/s0177102/source/repos/file/" + latest + ".txt";
-        ifstream finStudent(studentFile);
-        if (!finStudent.is_open()) continue;
+            // Вычисляем результат
+            int code = calcScholarship(st);
 
-        Student s;
-        s.surname = latest;
-        for (int i = 0; i < 4; i++) finStudent >> s.grades[i];
-        finStudent.close();
+            // Формируем текстовое сообщение
+            string result;
+            if (code == 0) result = "Отчислен";
+            else if (code == 1) result = "Без стипендии";
+            else if (code == 2) result = "Обычная стипендия";
+            else result = "Повышенная стипендия";
 
-        int result = getResult(s);
+            // Добавляем результат в файл студента
+            ofstream dataOut(filePath, ios::app);
+            dataOut << "\nРЕЗУЛЬТАТ: " << result;
+            dataOut.close();
 
-        cout << "Данные получены от " << s.surname << ". Результат вычислен: " << result << endl;
-
-        ofstream fout(studentFile, ios::app);
-        fout << "\nРезультат проверки: ";
-        switch (result) {
-        case 0: fout << "Студент отчислен"; break;
-        case 1: fout << "Стипендия не назначена"; break;
-        case 2: fout << "Назначена обычная стипендия"; break;
-        case 3: fout << "Назначена повышенная стипендия"; break;
+            cout << "[SERVER] Обработан " << name << " → " << result << endl;
         }
-        fout.close();
+        fin.close();
     }
 
     return 0;
 }
 
-
-
 В БИНАРНОМ ВИДЕ
 
 #include <iostream>
 #include <fstream>
-#include <windows.h>
 #include <string>
+#include <windows.h>
 #include <cstring>
 using namespace std;
 
-struct Student {
-    char surname[32];
-    int grades[4];
+// Структура для передачи данных студента
+struct DataPacket {
+    char name[32];
+    int marks[4];
 };
 
-// Функция определения результата
-int getResult(const Student& s) {
-    bool has2 = false, has3 = false;
-    int sum = 0;
-    for (int i = 0; i < 4; i++) {
-        if (s.grades[i] == 2) has2 = true;
-        if (s.grades[i] == 3) has3 = true;
-        sum += s.grades[i];
+// Функция оценки результатов
+int evaluate(const DataPacket& d) {
+    bool fail = false, weak = false;
+    int total = 0;
+
+    // Анализ оценок
+    for (int i = 0; i < 4; ++i) {
+        total += d.marks[i];
+        if (d.marks[i] == 2) fail = true;
+        if (d.marks[i] == 3) weak = true;
     }
 
-    if (has2) return 0;       // отчислен
-    if (has3) return 1;       // без стипендии
-    if (sum == 20) return 3;  // повышенная
-    return 2;                 // обычная
+    // Код результата
+    if (fail) return 0;
+    if (weak) return 1;
+    if (total == 20) return 3;
+    return 2;
 }
 
 int main() {
     setlocale(LC_ALL, "rus");
-    cout << "Сервер запущен и ожидает запросы от клиентов..." << endl;
+    cout << "[SERVER] Бинарный сервер работает..." << endl;
 
-    const string reqFile = "C:/Users/s0177102/source/repos/file/REQUEST.bin";
-    char lastNameProcessed[32] = "";
+    // Общий бинарный файл, куда клиенты записывают структуры запросов
+    const string reqPath = "C:/Users/s0177102/source/repos/file/requests_queue.bin";
 
+    // Размер файла при последней проверке
+    streampos lastSize = 0;
+
+    // Основной цикл обработки
     while (true) {
-        Sleep(500);
+        Sleep(1000); // Проверка раз в секунду
 
-        ifstream fin(reqFile, ios::binary);
+        // Проверяем текущий размер файла
+        ifstream fin(reqPath, ios::binary | ios::ate);
         if (!fin.is_open()) continue;
 
-        char current[32] = "";
-        char latest[32] = "";
-
-        // Читаем последнюю фамилию из бинарного файла
-        while (fin.read(current, sizeof(current))) {
-            strncpy(latest, current, sizeof(latest));
-        }
-        fin.close();
-
-        if (strlen(latest) == 0 || strcmp(latest, lastNameProcessed) == 0)
+        streampos currentSize = fin.tellg();
+        if (currentSize == lastSize) { // ничего не изменилось
+            fin.close();
             continue;
-
-        strcpy(lastNameProcessed, latest);
-
-        // Читаем бинарный файл студента
-        string studentFile = "C:/Users/s0177102/source/repos/file/" + string(latest) + ".bin";
-        ifstream finStudent(studentFile, ios::binary);
-        if (!finStudent.is_open()) continue;
-
-        Student s;
-        finStudent.read(reinterpret_cast<char*>(&s), sizeof(Student));
-        finStudent.close();
-
-        int result = getResult(s);
-
-        cout << "Получены данные от " << s.surname << ". Результат вычислен: " << result << endl;
-
-        string response = "\nРезультат проверки: ";
-        switch (result) {
-        case 0: response += "Студент отчислен"; break;
-        case 1: response += "Стипендия не назначена"; break;
-        case 2: response += "Назначена обычная стипендия"; break;
-        case 3: response += "Назначена повышенная стипендия"; break;
         }
 
-        // Записываем ответ в бинарный файл студента
-        ofstream fout(studentFile, ios::binary | ios::app);
-        fout.write(response.c_str(), response.size() + 1); // +1 для '\0'
-        fout.close();
+        // Если появились новые данные — читаем их
+        fin.seekg(lastSize); // переходим к новому месту
+        DataPacket pkt;
+
+        // Считываем все новые структуры
+        while (fin.read(reinterpret_cast<char*>(&pkt), sizeof(DataPacket))) {
+            // Формируем имя файла для клиента
+            string clientFile = "C:/Users/s0177102/source/repos/file/" + string(pkt.name) + ".bin";
+
+            // Вычисляем результат
+            int code = evaluate(pkt);
+
+            // Готовим текст ответа
+            string answer;
+            switch (code) {
+            case 0: answer = "Отчислен"; break;
+            case 1: answer = "Без стипендии"; break;
+            case 2: answer = "Обычная стипендия"; break;
+            case 3: answer = "Повышенная стипендия"; break;
+            }
+
+            // Записываем ответ в отдельный бинарный файл
+            string outFile = "C:/Users/s0177102/source/repos/file/" + string(pkt.name) + "_out.bin";
+            ofstream fout(outFile, ios::binary | ios::trunc);
+            fout.write(answer.c_str(), answer.size() + 1);
+            fout.close();
+
+            cout << "[SERVER] Ответ сформирован для " << pkt.name << ": " << answer << endl;
+        }
+
+        // Обновляем контроль размера
+        lastSize = currentSize;
+        fin.close();
     }
 
     return 0;
