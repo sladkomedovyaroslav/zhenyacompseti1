@@ -7,57 +7,74 @@ using namespace std;
 int main() {
     setlocale(LC_ALL, "rus");
 
-    const string reqFile = "C:/Users/s0177102/source/repos/file/REQUEST.txt";
+    // Имя файла, через который клиент сообщает серверу о новом запросе
+    const string reqFile = "C:/Users/s0177102/source/repos/file/queue.txt";
 
+    // Клиент работает в бесконечном цикле — можно вводить студентов один за другим
     while (true) {
-        string surname;
-        int marks[4];
+        string lastname;
+        int exams[4];
 
-        cout << "\nВведите фамилию учащегося: ";
-        cin >> surname;
+        // Ввод фамилии студента
+        cout << "\nВведите фамилию: ";
+        cin >> lastname;
 
-        cout << "Введите оценки за 4 экзамена (через пробел): ";
-        for (int i = 0; i < 4; i++)
-            cin >> marks[i];
+        // Ввод 4 оценок
+        cout << "Введите 4 оценки: ";
+        for (int i = 0; i < 4; ++i)
+            cin >> exams[i];
 
-        // Формируем путь к файлу клиента
-        string filePath = "C:/Users/s0177102/source/repos/file/" + surname + ".txt";
+        // Создание файла для конкретного студента
+        string studentFile = "C:/Users/s0177102/source/repos/file/" + lastname + ".txt";
 
         // Записываем оценки в файл
-        ofstream fout(filePath);
-        for (int i = 0; i < 4; i++) fout << marks[i] << " ";
+        ofstream fout(studentFile);
+        for (int i = 0; i < 4; ++i)
+            fout << exams[i] << " ";
         fout.close();
 
-        // Уведомляем сервер через REQUEST.txt
+        // Уведомляем сервер, записав фамилию в очередь
         ofstream foutReq(reqFile, ios::app);
-        foutReq << surname << endl;
+        foutReq << lastname << endl;
         foutReq.close();
 
-        cout << "Запрос передан серверу. Подождите, идёт обработка..." << endl;
+        cout << "[CLIENT] Отправлено на сервер..." << endl;
 
-        bool gotAnswer = false;
-        string line;
-        while (!gotAnswer) {
-            Sleep(500);
-            ifstream fin(filePath);
-            while (getline(fin, line)) {
-                if (line.find("Результат") != string::npos) {
-                    cout << line << endl;
-                    gotAnswer = true;
-                    break;
-                }
+        // Определяем исходный размер файла (до ответа)
+        streampos sizeBefore = 0;
+        ifstream fcheck(studentFile, ios::ate);
+        sizeBefore = fcheck.tellg();
+        fcheck.close();
+
+        // Ждём, пока файл не увеличится (сервер добавит ответ)
+        bool updated = false;
+        while (!updated) {
+            Sleep(800); // Периодическая проверка
+
+            // Проверяем размер файла снова
+            ifstream fcheck2(studentFile, ios::ate);
+            streampos sizeAfter = fcheck2.tellg();
+            fcheck2.close();
+
+            // Если размер стал больше — значит, сервер уже записал результат
+            if (sizeAfter > sizeBefore) {
+                ifstream fin(studentFile);
+                string line;
+                while (getline(fin, line))
+                    if (line.find("РЕЗУЛЬТАТ") != string::npos)
+                        cout << "[CLIENT] " << line << endl;
+                fin.close();
+                updated = true;
             }
-            fin.close();
         }
-
-        cout << "---------------------------------------" << endl;
     }
 
     return 0;
 }
 
 
-В БИНАРНОМ ВИДЕ 
+В БИНАРНОМ ВИДЕ
+
 
 #include <iostream>
 #include <fstream>
@@ -66,60 +83,61 @@ int main() {
 #include <cstring>
 using namespace std;
 
-struct Student {
-    char surname[32];
-    int grades[4];
+// Структура пакета данных для передачи на сервер
+struct DataPacket {
+    char name[32];
+    int marks[4];
 };
 
 int main() {
     setlocale(LC_ALL, "rus");
-    const string reqFile = "C:/Users/s0177102/source/repos/file/REQUEST.bin";
+
+    // Общий бинарный файл запросов
+    const string queuePath = "C:/Users/s0177102/source/repos/file/requests_queue.bin";
 
     while (true) {
-        string name;
-        Student s = {};
+        string surname;
+        DataPacket pkt = {}; // создаём пустую структуру
 
-        cout << "Введите фамилию студента: ";
-        cin >> name;
-        strncpy(s.surname, name.c_str(), sizeof(s.surname) - 1);
+        // Ввод фамилии
+        cout << "\nВведите фамилию студента: ";
+        cin >> surname;
 
-        cout << "Введите 4 оценки через пробел: ";
-        for (int i = 0; i < 4; i++)
-            cin >> s.grades[i];
+        // Копируем строку в char-массив (для бинарной записи)
+        strncpy(pkt.name, surname.c_str(), sizeof(pkt.name) - 1);
 
-        // Записываем структуру в бинарный файл студента
-        string studentFile = "C:/Users/s0177102/source/repos/file/" + name + ".bin";
-        ofstream fout(studentFile, ios::binary | ios::trunc);
-        fout.write(reinterpret_cast<char*>(&s), sizeof(Student));
+        // Ввод 4 оценок
+        cout << "Введите 4 оценки: ";
+        for (int i = 0; i < 4; ++i)
+            cin >> pkt.marks[i];
+
+        // Записываем структуру в общий бинарный файл
+        ofstream fout(queuePath, ios::binary | ios::app);
+        fout.write(reinterpret_cast<char*>(&pkt), sizeof(DataPacket));
         fout.close();
 
-        // Добавляем фамилию в бинарный файл запросов
-        ofstream foutReq(reqFile, ios::binary | ios::app);
-        foutReq.write(s.surname, sizeof(s.surname));
-        foutReq.close();
+        cout << "[CLIENT] Данные отправлены серверу. Ждём файл-ответ..." << endl;
 
-        cout << "Запрос отправлен серверу. Ожидание ответа..." << endl;
+        // Формируем имя выходного файла, который создаст сервер
+        string outFile = "C:/Users/s0177102/source/repos/file/" + surname + "_out.bin";
+        bool received = false;
 
-        // Ожидаем ответ
-        bool answered = false;
-        while (!answered) {
-            Sleep(500);
-            ifstream fin(studentFile, ios::binary);
-            if (!fin.is_open()) continue;
+        // Ожидаем, пока сервер создаст файл с ответом
+        while (!received) {
+            Sleep(1000);
+            ifstream fin(outFile, ios::binary);
+            if (fin.is_open()) {
+                // Если файл появился — считываем ответ
+                string response;
+                getline(fin, response, '\0');
+                cout << "[CLIENT] Ответ сервера: " << response << endl;
+                fin.close();
 
-            fin.seekg(0, ios::end);
-            streampos size = fin.tellg();
-            if (size > sizeof(Student)) {
-                fin.seekg(sizeof(Student));
-                string answer;
-                getline(fin, answer, '\0');
-                cout << answer << endl;
-                answered = true;
+                // Удаляем файл после чтения (чтобы не мешал следующему запросу)
+                remove(outFile.c_str());
+                received = true;
             }
-            fin.close();
         }
-
-        cout << "----------------------------------\n";
     }
 
     return 0;
